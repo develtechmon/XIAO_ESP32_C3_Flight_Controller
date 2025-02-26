@@ -65,17 +65,36 @@ void setup() {
 }
 void loop() {
   gyro_signals();
-  Serial.print("Acceleration X [g]= ");
+
+  Serial.print("Rate Roll = ");
+  Serial.print(RateRoll);
+  Serial.print("  ");
+
+  Serial.print(" Rate Pitch = ");
+  Serial.print(RatePitch);
+  Serial.print("  ");
+
+  Serial.print(" Rate Yaw Z = ");
+  Serial.print(RateYaw);
+  Serial.print("  ");
+
+  Serial.print(" Acceleration X [g]= ");
   Serial.print(AccX);
+  Serial.print("  ");
+
   Serial.print(" Acceleration Y [g]= ");
   Serial.print(AccY);
+  Serial.print("  ");
+
   Serial.print(" Acceleration Z [g]= ");
   Serial.print(AccZ);
   Serial.print("  ");
-  Serial.print("Roll Angle=");
+
+  Serial.print(" Roll Angle = ");
   Serial.print(AngleRoll);
   Serial.print("  ");
-  Serial.print("Roll Pitch=");
+  
+  Serial.print(" Roll Pitch = ");
   Serial.println(AnglePitch);
-  delay(50);
+  delay(100);
 }

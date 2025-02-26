@@ -15,6 +15,7 @@ volatile float MotorInput1, MotorInput2, MotorInput3, MotorInput4;
 volatile float RatePitch, RateRoll, RateYaw;
 float RateCalibrationPitch, RateCalibrationRoll, RateCalibrationYaw;
 float AccXCalibration, AccYCalibration, AccZCalibration;
+volatile float InputRoll, InputThrottle, InputPitch, InputYaw;
 
 // Global variables for PPM
 volatile int ReceiverValue[NUM_CHANNELS] = {1500,1500,1000,1500,1500,1500,1500,1500};
