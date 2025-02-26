@@ -1,6 +1,35 @@
 #include <Wire.h>
 #include <ESP32Servo.h>
 #include <math.h>
+#include "Adafruit_VL53L1X.h"   // Updated library include
+
+// ---------- VL53L1X Sensor Pin Definitions ----------
+#define IRQ_PIN 6 // SDA GPIO6
+#define XSHUT_PIN 7 // SCL GPIO7
+
+// ---------- VL53L1X Sensor Instance ----------
+// Create an instance with the XSHUT and IRQ pins.
+Adafruit_VL53L1X vl53 = Adafruit_VL53L1X(XSHUT_PIN, IRQ_PIN);
+
+// ---------- Global Altitude Timing Variable ----------
+// This variable is used to update altitude measurements approximately every 50ms.
+unsigned long lastAltUpdate = 0;
+
+// ---------- VL53L1X Altitude Hold Variables ----------
+float currentAltitude = 0.0;  // measured altitude in meters
+float altitudeError = 0.0;
+float altitudeIntegral = 0.0;
+float lastAltitudeError = 0.0;
+float altitudeDerivative = 0.0;
+float altitudePIDOutput = 0.0;
+// PID gains for altitude (tune these)
+// float Kp_alt = 0.8;
+// float Ki_alt = 0.3;
+// float Kd_alt = 0.1;
+
+float Kp_alt = 3.5;
+float Ki_alt = 0.0015;
+float Kd_alt = 0.01;
 
 // ===== PPM Definitions =====
 #define PPM_PIN 10             // Pin where the PPM signal is connected
@@ -124,6 +153,16 @@ void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, fl
     Kalman1DOutput[1]=KalmanUncertainty;
 }
 
+// The desired altitude is determined by the pilot's throttle input.
+// For example, map ReceiverValue[2] (range: 1000 to 1800) to an altitude range of 0.5 m to 3.0 m.
+float getDesiredAltitude() {
+  int throttle = ReceiverValue[2];  // raw throttle pulse width
+  if(throttle < 1000) throttle = 1000;
+  if(throttle > 1800) throttle = 1800;
+  float desiredAlt = ((float)(throttle - 1000) / 800.0) * (3.0 - 0.5) + 0.5;
+  return desiredAlt;
+}
+
 void setup() {
   Serial.begin(115200);
 
@@ -180,6 +219,20 @@ void setup() {
   AccYCalibration=-0.02;
   AccZCalibration=0.20;
 
+  // ----- Initialize VL53L1X Sensor for Altitude Measurement -----
+  if (!vl53.begin(0x29, &Wire)) {
+    Serial.println(vl53.vl_status);
+    while (1);
+  }
+  Serial.println("VL53L1X sensor OK!");
+  if (!vl53.startRanging()) {
+    Serial.println(vl53.vl_status);
+    while (1);
+  }
+  vl53.setTimingBudget(50);  // Valid budgets: 15, 20, 33, 50, 100, 200, 500 (ms)
+  Serial.print("Timing budget (ms): ");
+  Serial.println(vl53.getTimingBudget());
+
   // Wait until a valid throttle reading is received via PPM (channel index 2)
 
   // while (true) {
@@ -191,6 +244,7 @@ void setup() {
   // }
 
   LoopTimer = micros();
+  lastAltUpdate = micros();  // Initialize altitude update timer
 }
 
 void loop() {
@@ -334,7 +388,34 @@ void loop() {
   PrevErrorRateYaw = ErrorRateYaw;
   PrevItermRateYaw = ItermYaw;
 
-  if (InputThrottle > 1800){InputThrottle = 1800;}
+  // ----------- Altitude Hold using VL53L1X -----------
+  // Update altitude hold only every ~50ms
+  unsigned long currentAltTime = micros();
+  if (currentAltTime - lastAltUpdate >= 50000) {  // approx 50ms interval
+    float dtAlt = (currentAltTime - lastAltUpdate) / 1000000.0;  // compute dt in seconds
+    lastAltUpdate = currentAltTime;
+    
+    if (vl53.dataReady()) {
+      int16_t distance = vl53.distance();
+      if (distance != -1) {
+        currentAltitude = distance / 1000.0;  // convert mm to m
+      }
+      vl53.clearInterrupt();
+    }
+    
+    float desiredAltitude = getDesiredAltitude();
+    float altError = desiredAltitude - currentAltitude;
+    altitudeIntegral += altError * dtAlt;
+    altitudeDerivative = (altError - lastAltitudeError) / dtAlt;
+    altitudePIDOutput = Kp_alt * altError + Ki_alt * altitudeIntegral + Kd_alt * altitudeDerivative;
+    lastAltitudeError = altError;
+    
+    // Use a fixed baseline throttle (e.g., 1500 for hover) and add altitude correction.
+    // Adjust the baseline as needed for your specific motor/prop setup.
+    InputThrottle = 1550 + altitudePIDOutput;
+    if (InputThrottle > 1800) { InputThrottle = 1800; }
+    if (InputThrottle < ThrottleIdle) { InputThrottle = ThrottleIdle; }
+  }
 
   MotorInput1 =  (InputThrottle - InputRoll - InputPitch - InputYaw); // front right - counter clockwise
   MotorInput2 =  (InputThrottle - InputRoll + InputPitch + InputYaw); // rear right - clockwise
