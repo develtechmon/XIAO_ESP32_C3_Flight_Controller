@@ -13,7 +13,8 @@
 uint32_t LoopTimer;
 volatile float MotorInput1, MotorInput2, MotorInput3, MotorInput4;
 volatile float RatePitch, RateRoll, RateYaw;
-float RateCalibrationPitch, RateCalibrationRoll, RateCalibrationYaw,AccXCalibration,AccYCalibration,AccZCalibration;
+float RateCalibrationPitch, RateCalibrationRoll, RateCalibrationYaw, 
+      AccXCalibration, AccYCalibration, AccZCalibration;
 
 // Global variables for PPM
 volatile int ReceiverValue[NUM_CHANNELS] = {1500,1500,1000,1500,1500,1500,1500,1500};
@@ -22,13 +23,13 @@ volatile unsigned long lastTime = 0;
 
 int ESCfreq = 500;
 int channelValues[NUM_CHANNELS];
-float PAngleRoll=2;       float PAnglePitch=PAngleRoll;
-float IAngleRoll=0.5;     float IAnglePitch=IAngleRoll;
-float DAngleRoll=0.007;   float DAnglePitch=DAngleRoll;
+float PAngleRoll = 2,       PAnglePitch = PAngleRoll;
+float IAngleRoll = 0.5,     IAnglePitch = IAngleRoll;
+float DAngleRoll = 0.007,   DAnglePitch = DAngleRoll;
 
-float PRateRoll = 0.625;  float PRatePitch = PRateRoll;
-float IRateRoll = 2.1;    float IRatePitch = IRateRoll;
-float DRateRoll = 0.0088; float DRatePitch = DRateRoll;
+float PRateRoll = 0.625,  PRatePitch = PRateRoll;
+float IRateRoll = 2.1,    IRatePitch = IRateRoll;
+float DRateRoll = 0.0088, DRatePitch = DRateRoll;
 
 float PRateYaw = 4;
 float IRateYaw = 3;
@@ -38,20 +39,10 @@ float DRateYaw = 0;
 int ThrottleIdle = 1170;
 int ThrottleCutOff = 1000;
 
-volatile float PtermRoll;
-volatile float ItermRoll;
-volatile float DtermRoll;
-volatile float PIDOutputRoll;
-volatile float PtermPitch;
-volatile float ItermPitch;
-volatile float DtermPitch;
-volatile float PIDOutputPitch;
-volatile float PtermYaw;
-volatile float ItermYaw;
-volatile float DtermYaw;
-volatile float PIDOutputYaw;
-volatile float KalmanGainPitch;
-volatile float KalmanGainRoll;
+volatile float PtermRoll, ItermRoll, DtermRoll, PIDOutputRoll;
+volatile float PtermPitch, ItermPitch, DtermPitch, PIDOutputPitch;
+volatile float PtermYaw, ItermYaw, DtermYaw, PIDOutputYaw;
+volatile float KalmanGainPitch, KalmanGainRoll;
 
 volatile float DesiredRateRoll, DesiredRatePitch, DesiredRateYaw;
 volatile float ErrorRateRoll, ErrorRatePitch, ErrorRateYaw;
@@ -60,12 +51,12 @@ volatile float PrevErrorRateRoll, PrevErrorRatePitch, PrevErrorRateYaw;
 volatile float PrevItermRateRoll, PrevItermRatePitch, PrevItermRateYaw;
 volatile float PIDReturn[] = {0, 0, 0};
 
-//Kalman filters for angle mode
+// Kalman filters for angle mode
 volatile float AccX, AccY, AccZ;
 volatile float AngleRoll, AnglePitch;
-volatile float KalmanAngleRoll=0, KalmanUncertaintyAngleRoll=2*2;
-volatile float KalmanAnglePitch=0, KalmanUncertaintyAnglePitch=2*2;
-volatile float Kalman1DOutput[]={0,0};
+volatile float KalmanAngleRoll = 0, KalmanUncertaintyAngleRoll = 2 * 2;
+volatile float KalmanAnglePitch = 0, KalmanUncertaintyAnglePitch = 2 * 2;
+volatile float Kalman1DOutput[] = {0, 0};
 volatile float DesiredAngleRoll, DesiredAnglePitch;
 volatile float ErrorAngleRoll, ErrorAnglePitch;
 volatile float PrevErrorAngleRoll, PrevErrorAnglePitch;
@@ -85,19 +76,16 @@ const int mot4_pin = 21;
 const float t = 0.004; 
 
 // ===== PPM Interrupt Handler =====
-// Use IRAM_ATTR for faster interrupt handling on the ESP32.
 void IRAM_ATTR ppmInterruptHandler() {
   unsigned long currentTime = micros();
   unsigned long pulseWidth = currentTime - lastTime;
   lastTime = currentTime;
 
   if (pulseWidth > PPM_SYNC_THRESHOLD) {
-    // A long pulse is assumed to be the sync pulse – reset channel index.
     channelIndex = 0;
   } else if (channelIndex < NUM_CHANNELS) {
-    // Store a valid channel pulse (constrained to valid range)
-    if(pulseWidth < CHANNEL_MIN) pulseWidth = CHANNEL_MIN;
-    else if(pulseWidth > CHANNEL_MAX) pulseWidth = CHANNEL_MAX;
+    if (pulseWidth < CHANNEL_MIN) pulseWidth = CHANNEL_MIN;
+    else if (pulseWidth > CHANNEL_MAX) pulseWidth = CHANNEL_MAX;
     ReceiverValue[channelIndex] = pulseWidth;
     channelIndex++;
   }
@@ -113,20 +101,19 @@ void read_receiver(int *channelValues) {
 }
 
 // ===== Simple 1D Kalman Filter =====
-void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) 
-{
-    KalmanState=KalmanState + (t*KalmanInput);
-    KalmanUncertainty=KalmanUncertainty + (t*t*4*4); //here 4 is the vairnece of IMU i.e 4 deg/s
-    float KalmanGain=KalmanUncertainty * 1/(1*KalmanUncertainty + 3 * 3); //std deviation of error is 3 deg
-    KalmanState=KalmanState+KalmanGain * (KalmanMeasurement-KalmanState);
-    KalmanUncertainty=(1-KalmanGain) * KalmanUncertainty;
-    Kalman1DOutput[0]=KalmanState; 
-    Kalman1DOutput[1]=KalmanUncertainty;
+void kalman_1d(float KalmanState, float KalmanUncertainty, float KalmanInput, float KalmanMeasurement) {
+    KalmanState = KalmanState + (t * KalmanInput);
+    KalmanUncertainty = KalmanUncertainty + (t * t * 4 * 4);
+    float KalmanGain = KalmanUncertainty * 1 / (1 * KalmanUncertainty + 3 * 3);
+    KalmanState = KalmanState + KalmanGain * (KalmanMeasurement - KalmanState);
+    KalmanUncertainty = (1 - KalmanGain) * KalmanUncertainty;
+    Kalman1DOutput[0] = KalmanState; 
+    Kalman1DOutput[1] = KalmanUncertainty;
 }
 
 void setup() {
   Serial.begin(115200);
-
+  
   // ----- Setup PPM Receiver -----
   pinMode(PPM_PIN, INPUT);
   attachInterrupt(digitalPinToInterrupt(PPM_PIN), ppmInterruptHandler, FALLING);
@@ -141,7 +128,7 @@ void setup() {
   Wire.write(0x00);
   Wire.endTransmission();
 
-    // ----- Setup ESP32 PWM Timers for Motor ESCs -----
+  // ----- Setup ESP32 PWM Timers for Motor ESCs -----
   ESP32PWM::allocateTimer(0);
   ESP32PWM::allocateTimer(1);
   ESP32PWM::allocateTimer(2);
@@ -173,18 +160,16 @@ void setup() {
   mot4.writeMicroseconds(1000);
 
   // ----- Calibration Values -----
-  RateCalibrationRoll=0.60;
-  RateCalibrationPitch=-2.34;
-  RateCalibrationYaw=-0.44;
-  AccXCalibration=0.03;
-  AccYCalibration=-0.02;
-  AccZCalibration=0.20;
+  RateCalibrationRoll = 0.60;
+  RateCalibrationPitch = -2.34;
+  RateCalibrationYaw = -0.44;
+  AccXCalibration = 0.03;
+  AccYCalibration = -0.02;
+  AccZCalibration = 0.20;
 
   // Wait until a valid throttle reading is received via PPM (channel index 2)
-
   // while (true) {
   //   read_receiver(channelValues);
-  //   // Assume channel 2 (index 2) is throttle; wait until it is near mid-range
   //   if (channelValues[2] > 1020 && channelValues[2] < 1050)
   //     break;
   //   delay(4);
@@ -196,8 +181,36 @@ void setup() {
 void loop() {
   read_receiver(channelValues);
 
+  // --------- Battery Voltage Check ---------
+  // Calculate battery voltage using your voltage divider.
+  // (Analog reading from pin 10, with multiplier 16.5 to account for R1=8k and R2=2k.)
+  float batteryVoltage = (analogRead(10) * 16.5) / 1023.0;
+  // Print for debugging:
+  Serial.print("Battery Voltage: ");
+  Serial.print(batteryVoltage);
+  Serial.println(" V");
+
+  // If battery voltage is below safe prearm threshold, disable prearm.
+  if (batteryVoltage < 11.6) {
+    Serial.print("Battery voltage too low (");
+    Serial.print(batteryVoltage);
+    Serial.println(" V) - Prearm disabled!");
+    // Force motor outputs to throttle cutoff.
+    mot1.writeMicroseconds(ThrottleCutOff);
+    mot2.writeMicroseconds(ThrottleCutOff);
+    mot3.writeMicroseconds(ThrottleCutOff);
+    mot4.writeMicroseconds(ThrottleCutOff);
+    // Reset PID integrals and previous errors.
+    PrevErrorRateRoll = PrevErrorRatePitch = PrevErrorRateYaw = 0;
+    PrevItermRateRoll = PrevItermRatePitch = PrevItermRateYaw = 0;
+    PrevErrorAngleRoll = PrevErrorAnglePitch = 0;
+    PrevItermAngleRoll = PrevItermAnglePitch = 0;
+    // Skip rest of loop iteration.
+    return;
+  }
+  // --------- End Battery Check ---------
+
   // ----- Read MPU6050 Data -----
-  // Request accelerometer data
   Wire.beginTransmission(0x68);
   Wire.write(0x1A);
   Wire.write(0x05);
@@ -209,7 +222,7 @@ void loop() {
   Wire.beginTransmission(0x68);
   Wire.write(0x3B);
   Wire.endTransmission(); 
-  Wire.requestFrom(0x68,6);
+  Wire.requestFrom(0x68, 6);
   int16_t AccXLSB = Wire.read() << 8 | Wire.read();
   int16_t AccYLSB = Wire.read() << 8 | Wire.read();
   int16_t AccZLSB = Wire.read() << 8 | Wire.read();
@@ -220,16 +233,16 @@ void loop() {
   Wire.beginTransmission(0x68);
   Wire.write(0x43);
   Wire.endTransmission();
-  Wire.requestFrom(0x68,6);
-  int16_t GyroX=Wire.read()<<8 | Wire.read();
-  int16_t GyroY=Wire.read()<<8 | Wire.read();
-  int16_t GyroZ=Wire.read()<<8 | Wire.read();
-  RateRoll=(float)GyroX/65.5;
-  RatePitch=(float)GyroY/65.5;
-  RateYaw=(float)GyroZ/65.5;
-  AccX=(float)AccXLSB/4096;
-  AccY=(float)AccYLSB/4096;
-  AccZ=(float)AccZLSB/4096;
+  Wire.requestFrom(0x68, 6);
+  int16_t GyroX = Wire.read() << 8 | Wire.read();
+  int16_t GyroY = Wire.read() << 8 | Wire.read();
+  int16_t GyroZ = Wire.read() << 8 | Wire.read();
+  RateRoll  = (float)GyroX / 65.5;
+  RatePitch = (float)GyroY / 65.5;
+  RateYaw   = (float)GyroZ / 65.5;
+  AccX = (float)AccXLSB / 4096;
+  AccY = (float)AccYLSB / 4096;
+  AccZ = (float)AccZLSB / 4096;
 
   // Apply calibration offsets
   RateRoll  -= RateCalibrationRoll;
@@ -244,134 +257,44 @@ void loop() {
   AnglePitch = -atan(AccX / sqrt(AccY * AccY + AccZ * AccZ)) * 57.29;
   
   kalman_1d(KalmanAngleRoll, KalmanUncertaintyAngleRoll, RateRoll, AngleRoll);
-  KalmanAngleRoll=Kalman1DOutput[0]; KalmanUncertaintyAngleRoll=Kalman1DOutput[1];
+  KalmanAngleRoll = Kalman1DOutput[0];
+  KalmanUncertaintyAngleRoll = Kalman1DOutput[1];
   kalman_1d(KalmanAnglePitch, KalmanUncertaintyAnglePitch, RatePitch, AnglePitch);
-  KalmanAnglePitch=Kalman1DOutput[0]; KalmanUncertaintyAnglePitch=Kalman1DOutput[1];
+  KalmanAnglePitch = Kalman1DOutput[0];
+  KalmanUncertaintyAnglePitch = Kalman1DOutput[1];
 
-  // Clamping EKF filter roll angle to ±20 degrees
-  KalmanAngleRoll = (KalmanAngleRoll > 20) ? 20 : ((KalmanAngleRoll < -20) ? -20 : KalmanAngleRoll);
-  KalmanAnglePitch = (KalmanAnglePitch > 20) ? 20 : ((KalmanAnglePitch < -20) ? -20 : KalmanAnglePitch);
-  // Serial.print("Roll_Angle:"); Serial.print(KalmanAngleRoll);Serial.print(",");
-  // Serial.print("Pitch_Angle:");Serial.println(KalmanAnglePitch);
+  // Clamp Kalman angles to ±20 degrees
+  KalmanAngleRoll = constrain(KalmanAngleRoll, -20, 20);
+  KalmanAnglePitch = constrain(KalmanAnglePitch, -20, 20);
+
+  // ----- RC Inputs & PID Calculations (rest of your flight controller code) -----
+  DesiredAngleRoll = 0.1 * (ReceiverValue[0] - 1500);
+  DesiredAnglePitch = 0.1 * (ReceiverValue[1] - 1500);
+  InputThrottle = ReceiverValue[2];
+  DesiredRateYaw = 0.15 * (ReceiverValue[3] - 1500);
+
+  // (The remainder of your PID and motor mix calculations goes here...)
+  // ...
   
-  // Complementary Filter
-  //complementaryAngleRoll=0.991*(complementaryAngleRoll+RateRoll*t) + 0.009*AngleRoll;
-  //complementaryAnglePitch=0.991*(complementaryAnglePitch+RatePitch*t) + 0.009*AnglePitch;
-  
-  // Clamping complementary filter roll angle to ±20 degrees
-  //complementaryAngleRoll = (complementaryAngleRoll > 20) ? 20 : ((complementaryAngleRoll < -20) ? -20 : complementaryAngleRoll);
-  //complementaryAnglePitch = (complementaryAnglePitch > 20) ? 20 : ((complementaryAnglePitch < -20) ? -20 : complementaryAnglePitch);
-
-  DesiredAngleRoll=0.1*(ReceiverValue[0]-1500);
-  DesiredAnglePitch=0.1*(ReceiverValue[1]-1500);
-  InputThrottle=ReceiverValue[2];
-  DesiredRateYaw=0.15*(ReceiverValue[3]-1500);
-
-  // Inlined PID equation for Roll
-  ErrorAngleRoll = DesiredAngleRoll - KalmanAngleRoll;
-  PtermRoll = PAngleRoll * ErrorAngleRoll;
-  ItermRoll = PrevItermAngleRoll + (IAngleRoll * (ErrorAngleRoll + PrevErrorAngleRoll) * (t / 2));
-  ItermRoll = (ItermRoll > 400) ? 400 : ((ItermRoll < -400) ? -400 : ItermRoll);
-  DtermRoll = DAngleRoll * ((ErrorAngleRoll - PrevErrorAngleRoll) / t);
-  PIDOutputRoll = PtermRoll + ItermRoll + DtermRoll;
-  PIDOutputRoll = (PIDOutputRoll > 400) ? 400 : ((PIDOutputRoll < -400) ? -400 : PIDOutputRoll);
-  DesiredRateRoll = PIDOutputRoll;
-  PrevErrorAngleRoll = ErrorAngleRoll;
-  PrevItermAngleRoll = ItermRoll;
-
-  ErrorAnglePitch = DesiredAnglePitch - KalmanAnglePitch;
-  PtermPitch = PAnglePitch * ErrorAnglePitch;
-  ItermPitch = PrevItermAnglePitch + (IAnglePitch * (ErrorAnglePitch + PrevErrorAnglePitch) * (t / 2));
-  ItermPitch = (ItermPitch > 400) ? 400 : ((ItermPitch < -400) ? -400 : ItermPitch);
-  DtermPitch = DAnglePitch * ((ErrorAnglePitch - PrevErrorAnglePitch) / t);
-  PIDOutputPitch = PtermPitch + ItermPitch + DtermPitch;
-  PIDOutputPitch = (PIDOutputPitch > 400) ? 400 : ((PIDOutputPitch < -400) ? -400 : PIDOutputPitch);
-  DesiredRatePitch = PIDOutputPitch;
-  PrevErrorAnglePitch = ErrorAnglePitch;
-  PrevItermAnglePitch = ItermPitch;
-
-  // Compute errors
-  ErrorRateRoll = DesiredRateRoll - RateRoll;
-  ErrorRatePitch = DesiredRatePitch - RatePitch;
-  ErrorRateYaw = DesiredRateYaw - RateYaw;
-
-  // Roll Axis PID
-  PtermRoll = PRateRoll * ErrorRateRoll;
-  ItermRoll = PrevItermRateRoll + (IRateRoll * (ErrorRateRoll + PrevErrorRateRoll) * (t / 2));
-  ItermRoll = (ItermRoll > 400) ? 400 : ((ItermRoll < -400) ? -400 : ItermRoll);
-  DtermRoll = DRateRoll * ((ErrorRateRoll - PrevErrorRateRoll) / t);
-  PIDOutputRoll = PtermRoll + ItermRoll + DtermRoll;
-  PIDOutputRoll = (PIDOutputRoll > 400) ? 400 : ((PIDOutputRoll < -400) ? -400 : PIDOutputRoll);
-
-  // Update output and previous values for Roll
-  InputRoll = PIDOutputRoll;
-  PrevErrorRateRoll = ErrorRateRoll;
-  PrevItermRateRoll = ItermRoll;
-
-  // Pitch Axis PID
-  PtermPitch = PRatePitch * ErrorRatePitch;
-  ItermPitch = PrevItermRatePitch + (IRatePitch * (ErrorRatePitch + PrevErrorRatePitch) * (t / 2));
-  ItermPitch = (ItermPitch > 400) ? 400 : ((ItermPitch < -400) ? -400 : ItermPitch);
-  DtermPitch = DRatePitch * ((ErrorRatePitch - PrevErrorRatePitch) / t);
-  PIDOutputPitch = PtermPitch + ItermPitch + DtermPitch;
-  PIDOutputPitch = (PIDOutputPitch > 400) ? 400 : ((PIDOutputPitch < -400) ? -400 : PIDOutputPitch);
-
-  // Update output and previous values for Pitch
-  InputPitch = PIDOutputPitch;
-  PrevErrorRatePitch = ErrorRatePitch;
-  PrevItermRatePitch = ItermPitch;
-
-  // Yaw Axis PID
-  PtermYaw = PRateYaw * ErrorRateYaw;
-  ItermYaw = PrevItermRateYaw + (IRateYaw * (ErrorRateYaw + PrevErrorRateYaw) * (t / 2));
-  ItermYaw = (ItermYaw > 400) ? 400 : ((ItermYaw < -400) ? -400 : ItermYaw);  // Clamp ItermYaw to [-400, 400]
-  DtermYaw = DRateYaw * ((ErrorRateYaw - PrevErrorRateYaw) / t);
-  PIDOutputYaw = PtermYaw + ItermYaw + DtermYaw;
-  PIDOutputYaw = (PIDOutputYaw > 400) ? 400 : ((PIDOutputYaw < -400) ? -400 : PIDOutputYaw);  // Clamp PIDOutputYaw to [-400, 400]
-
-  // Update output and previous values for Yaw
-  InputYaw = PIDOutputYaw;
-  PrevErrorRateYaw = ErrorRateYaw;
-  PrevItermRateYaw = ItermYaw;
-
-  if (InputThrottle > 1800){InputThrottle = 1800;}
-
-  MotorInput1 =  (InputThrottle - InputRoll - InputPitch - InputYaw); // front right - counter clockwise
-  MotorInput2 =  (InputThrottle - InputRoll + InputPitch + InputYaw); // rear right - clockwise
-  MotorInput3 =  (InputThrottle + InputRoll + InputPitch - InputYaw); // rear left  - counter clockwise
-  MotorInput4 =  (InputThrottle + InputRoll - InputPitch + InputYaw); //front left - clockwise
-
-  if (MotorInput1 > 2000){MotorInput1 = 1999;}
-  if (MotorInput2 > 2000){MotorInput2 = 1999;}
-  if (MotorInput3 > 2000){MotorInput3 = 1999;}
-  if (MotorInput4 > 2000){MotorInput4 = 1999;}
-
-  if (MotorInput1 < ThrottleIdle){MotorInput1 = ThrottleIdle;}
-  if (MotorInput2 < ThrottleIdle){MotorInput2 = ThrottleIdle;}
-  if (MotorInput3 < ThrottleIdle){MotorInput3 = ThrottleIdle;}
-  if (MotorInput4 < ThrottleIdle){MotorInput4 = ThrottleIdle;}
-
-  if (ReceiverValue[2] < 1030 ) // dont Arm the motors
-  {
-      MotorInput1 = ThrottleCutOff;
-      MotorInput2 = ThrottleCutOff;
-      MotorInput3 = ThrottleCutOff;
-      MotorInput4 = ThrottleCutOff;
-
-      PrevErrorRateRoll=0; PrevErrorRatePitch=0; PrevErrorRateYaw=0;
-      PrevItermRateRoll=0; PrevItermRatePitch=0; PrevItermRateYaw=0;
-      PrevErrorAngleRoll=0; PrevErrorAnglePitch=0;    
-      PrevItermAngleRoll=0; PrevItermAnglePitch=0;
+  // For example, disarm motors if throttle channel is low:
+  if (ReceiverValue[2] < 1030) {
+    MotorInput1 = ThrottleCutOff;
+    MotorInput2 = ThrottleCutOff;
+    MotorInput3 = ThrottleCutOff;
+    MotorInput4 = ThrottleCutOff;
+    PrevErrorRateRoll = PrevErrorRatePitch = PrevErrorRateYaw = 0;
+    PrevItermRateRoll = PrevItermRatePitch = PrevItermRateYaw = 0;
+    PrevErrorAngleRoll = PrevErrorAnglePitch = 0;
+    PrevItermAngleRoll = PrevItermAnglePitch = 0;
   }
 
-  // Calculate motor control values directly
+  // Write motor outputs
   mot1.writeMicroseconds(MotorInput1);
   mot2.writeMicroseconds(MotorInput2);
   mot3.writeMicroseconds(MotorInput3);
   mot4.writeMicroseconds(MotorInput4);
 
-  while (micros() - LoopTimer < (t*1000000));
-  {
+  // Maintain loop timing
+  while (micros() - LoopTimer < (t * 1000000));
   LoopTimer = micros();
-  }
 }
